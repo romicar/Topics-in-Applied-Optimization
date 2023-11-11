@@ -1,0 +1,30 @@
+Given a sample ratings matrix:
+R = np.array([
+    [5, 3, 0, 1],
+    [4, 0, 0, 1],
+    [1, 1, 0, 5],
+    [1, 0, 0, 4],
+    [0, 1, 5, 4],
+])
+
+
+Sample output for alpha=0.1, gamma=0.01, iterations=50
+by calling:
+
+lf = LF(R, K=2, alpha=0.1, gamma=0.01, iterations=50)
+
+SGD Iteration: 10 ; error = 0.7004
+SGD Iteration: 20 ; error = 0.3822
+SGD Iteration: 30 ; error = 0.2688
+SGD Iteration: 40 ; error = 0.2053
+SGD Iteration: 50 ; error = 0.1590
+
+P x Q:
+[[5.03171408 3.0375766  2.71634044 1.0589819 ]
+ [4.04022111 4.10158499 1.26214656 1.06245983]
+ [1.02819823 1.04199804 4.71131821 5.04542343]
+ [1.06386692 2.5522937  2.8274385  4.06760528]
+ [2.6292694  0.98475555 4.98289146 3.99117933]]
+
+Global bias:
+2.769230769230769
