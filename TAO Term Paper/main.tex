@@ -1,0 +1,321 @@
+\documentclass{beamer}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{algpseudocode}
+\usepackage{amsmath}
+\usetheme{default}
+\begin{document}
+
+%Information to be included in the title page:
+\title{Fast Label Embeddings via Randomized Linear Algebra}
+
+\author{Author: Paul Mineiro and Nikos Karampatziakis \\ Presented By: Sriteja Reddy Pashya and Romica Raisinghani}
+
+\institute{MA8.401 Topics in Applied Optimization}
+
+\date{$5^\text{th}$ December 2023}
+\frame{\titlepage}
+
+
+\begin{frame}
+\frametitle{Motivation and Problem Statement}
+\begin{itemize}
+    \item Modern multiclass and multilabel problems are characterized by increasingly large output spaces.
+    \item The goal is to improve both computational and statistical efficiency in dealing with these problems.
+    \item The authors propose the use of label embeddings to tackle problems with large output spaces.
+    \item A fast label embedding algorithm is introduced that works in both the multiclass and multilabel settings.
+    \item The algorithm uses techniques from randomized linear algebra to develop an efficient and scalable method for constructing the embeddings.
+    \item The techniques are demonstrated on two large-scale public datasets, where they obtain state-of-the-art results.
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Algorithm Notations}
+Let us have a look at some of the notations that will be used in the algorithm:
+\begin{itemize}
+    \item Vectors are denoted by lowercase letters $ x, y, . . .$.
+    \item Matrices are denoted by uppercase letters $ W, W, . . .$.
+    \item Input dimension: $d$
+    \item Output dimension: $c$
+    \item Embedding dimension: $k$
+    \item $ X \in \mathbb{R}^{m \times n}$ denotes an $m \times n$ matrix.
+    \item \(\|X\|_F\) represents the Frobenius norm of matrix $X$.
+\end{itemize}
+For a given matrix $A$ with dimensions $m \times n$, Frobenius norm is computed as follows:
+\begin{equation*}
+    \|A\|_F = \sqrt{\sum_{i=1}^m \sum_{j=1}^n |a_{ij}|^2}
+\end{equation*}
+\end{frame}
+
+\begin{frame}{Algorithm Notations Continued}
+\begin{itemize}
+    \item For multiclass problems, $y$ is a one-hot vector.
+    \item For multilabel problems, $y$ is a binary vector.
+    \item $X^\dagger$ denotes the pseudoinverse of matrix $X$.
+    \item $\Pi_{X,L}$ represents the projection onto the left singular subspace of $X$.
+    \item $X_{1:k}$ denotes the matrix obtained by taking the first $k$ columns of $X$.
+    \item $X^*$ denotes a matrix obtained by solving an optimization problem over the matrix parameter $X$.
+    \item The expectation of a random variable $v$ is denoted by $\mathbb{E}[v]$.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Regular PCA Algorithm}
+\begin{algorithm}[H]
+\caption{Regular PCA}
+\Function{PCA}{$k, X \in \mathbb{R}^{n \times d}$}
+    \State $C \gets X^TX$ \Comment{Compute the covariance matrix}
+    \State $(U, \Sigma, V^T) \gets \text{SVD}(C)$ \Comment{Singular Value Decomposition}
+    \State $U_k \gets U[:, 1:k]$ \Comment{Select the first k columns of U}
+    \State $\Sigma_k \gets \Sigma[1:k, 1:k]$ \Comment{Select the top k x k block of $\Sigma$}
+    \State $V_k^T \gets V^T[1:k, :]$ \Comment{Select the first k rows of $V^T$}
+    \State $Y \gets X V_k$ \Comment{Project X onto the space spanned by the top k eigenvectors}
+    \State \Return $(Y, \Sigma_k)$
+\EndFunction
+\end{algorithm}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Randomized PCA Algorithm}
+\begin{algorithm}[H]
+\caption{Randomized PCA}
+\Function{RPCA}{$k, X \in \mathbb{R}^{n \times d}$}
+    \State $(p, q) \gets (20, 1)$ \Comment{Hyperparameters}
+    \State $Q \gets \text{randn}(d, k + p)$
+    \For{$i \in \{1, \ldots, q\}$}
+        \State $\Psi \gets X^TXQ$ \Comment{$\Psi$ computed in one pass}
+        \State $Q \gets \text{orthogonalize}(\Psi)$
+    \EndFor
+    \State $F \gets (X^TXQ)^T(X^TXQ)$
+    \State $(V, \Sigma^2) \gets \text{eig}(F, k)$
+    \State $V \gets (X^TXQ)V\Sigma^\dagger$
+    \State \Return $(V, \Sigma)$
+\EndFunction
+\end{algorithm}
+\end{frame}
+
+
+
+\begin{frame}
+\frametitle{Explanation: RPCA Algorithm}
+\begin{itemize}
+    \item Algorithm starts with a function RPCA that takes two parameters i.e $k$(number of desired principal components) and input matrix $X$(containing $n$ examples and $d$ features).
+    \item Hyper-parameters $p$ and $q$ rarely need adjustment. $p$ is used to oversample the number of random vectors to ensure a good range approximation, and $q$ is the number of times the range finding loop will run.
+    \item Generate a matrix $Q$ of dimensions $d \times (k + p)$ filled with random numbers. This matrix is used to probe the range of the matrix $X^T X$.
+    \item Algorithm runs a loop $q$ times. In each iteration:\\
+    1. Compute the matrix $\psi$ as the product of $X^T X$ and $Q$.\\
+    2. Update $Q$ to an orthogonal basis for the range of $\psi$.
+
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Explanation: RPCA Algorithm (Continued)}
+    \begin{itemize}
+        \item After completing the $q$ iterations, compute the matrix $F$ as the product of $(X^T XQ)^T$ and $(X^T XQ)$. The matrix $F$ is of size $(k + p) \times (k + p)$ and is small relative to the original data matrix.
+        \item Perform eigendecomposition on the small matrix $F$ to obtain the top $k$ eigenvectors and eigenvalues. The eigenvectors are stored in $V$, and the eigenvalues (squared) are stored in $\sum^2$.
+        \item  Multiply $(X^T XQ)$ with $V$ and scale by the pseudoinverse of $\sum$ (denoted $\sum^\dagger$). This step backs out the solution to find the approximate principal components.
+        \item Return the matrices $V$ (eigenvectors) and $\sum$ (square root of the eigenvalues), which represent the principal components and their associated variances.
+    \end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Rembrandt Algorithm}
+\begin{algorithm}[H]
+\caption{: \textbf{R}esponse \textbf{EMB}edding via \textbf{RAND}omized \textbf{T}echniques}
+\Function{Rembrandt}{$k, X \in \mathbb{R}^{n \times d}, Y \in \mathbb{R}^{n \times c}$}
+    \State $(p, q) \gets (20, 1)$ \Comment{Hyperparameters}
+    \State $Q \gets \text{randn}(c, k + p)$
+    \For{$i \in \{1, \ldots, q\}$}
+        \State $Z \gets \text{argmin} \Vert YQ - XZ \Vert_F^2$
+        \State $Q \gets \text{orthogonalize}(YXZ)$
+    \EndFor
+    \State $F \gets (YXZ)(YXZ)^T$
+    \State $(V, \Sigma^2) \gets \text{eig}(F, k)$
+    \State $V \gets (YXZ)V\Sigma^\dagger$
+    \State \Return $(V, \Sigma)$
+\EndFunction
+\end{algorithm}
+\end{frame}
+
+% \begin{frame}
+% \frametitle{Explanation: Rembrandt Algorithm}
+
+% \begin{block}{Optimal Squared Loss Prediction}
+% We aim to find an optimal squared loss predictor for a high-cardinality target vector \( y \in \mathbb{R}^c \), which is linear in a high dimensional feature vector \( x \in \mathbb{R}^d \).
+% \end{block}
+
+% \begin{block}{Constraints and Challenges}
+% Due to concerns of sample complexity, a low-rank constraint is imposed on the weight matrix, leading to the problem:
+% \[ W^* = \underset{W \in \mathbb{R}^{d \times c} | \text{rank}(W) \leq k}{\arg\min} \| Y - XW \|_F^2 \]
+% where \( Y \in \mathbb{R}^{n \times c} \) and \( X \in \mathbb{R}^{n \times d} \) represent the target and design matrices respectively.
+% \end{block}
+
+% % \begin{block}{Generalization}
+% % This issue is a specific instance of a broader problem in the field, focusing on balancing computational efficiency and statistical accuracy in extensive output spaces.
+% % \end{block}
+% \end{frame}
+
+% \begin{frame}
+% \frametitle{Explanation: Rembrandt Algorithm}
+% The Rembrandt algorithm computes an optimal weight matrix \( W^* \) using a three-step procedure:
+
+% \begin{enumerate}
+%     \item \textbf{Projection}: It projects the target matrix \( Y \) onto \( k \) dimensions using the top right singular vectors of \( \Pi_{X,L} Y \), where \( \Pi_{X,L} \) is the projection onto the left singular subspace of \( X \).
+%     \item \textbf{Least Squares Fit}: Then it fits the projected labels to the features using a least squares fit, which is a standard approach for finding the best-fit linear model that minimizes the sum of the squares of the errors.
+%     \item \textbf{Mapping Predictions}: Finally, it maps these predictions back to the original output space using the transpose of the top \( k \) right singular vectors of \( \Pi_{X,L} Y \).
+% \end{enumerate}
+
+% This process efficiently approximates \( W^* =  \) without having to compute it directly, thus saving on computational resources while still capturing the essential structure of the data.
+% \end{frame}
+
+\begin{frame}
+\frametitle{Optimal Squared Loss Predictor with Low-Rank Constraint}
+\begin{block}{Problem Formulation}
+We aim to find a weight matrix \( W^* \) for predicting a high-cardinality target vector \( y \in \mathbb{R}^c \) from a high-dimensional feature vector \( x \in \mathbb{R}^d \). The challenge is to minimize the squared loss, \( \lVert Y - XW \rVert_F^2 \), under a low-rank constraint \( \text{rank}(W) \leq k \), where \( Y \) and \( X \) are the target and design matrices, respectively.
+\end{block}
+
+\begin{block}{Solution via SVD}
+The solution \( W^* \) is obtained through the projection \( \Pi_{X,L} \) onto the left singular subspace of \( X \), and involves the optimal Frobenius norm rank-\( k \) approximation. The expression for \( W^* \) is derived using SVD, simplifying to \( W^* = X^\dagger(Y V_{1:k})V_{1:k}^T \).
+\end{block}
+
+\begin{block}{Reference}
+Friedland, S., Torokhti, A.: Generalized rank-constrained matrix approximations. SIAM Journal on Matrix Analysis and Applications 29(2), 656–659 (2007).
+\end{block}
+\end{frame}
+
+% \begin{frame}
+% \frametitle{Rembrandt Algorithm: Computation Steps}
+% \begin{algorithm}[H]
+% \caption{Computation Steps for \( W^* \)}
+% \begin{enumerate}
+%     \item Project \( Y \) onto \( k \) dimensions using the right singular vectors of \( \Pi_{X,L}Y \).
+%     \item Perform a least squares fit with the projected labels and features in \( X \).
+%     \item Map the predictions back to the original output space with the right singular vectors.
+% \end{enumerate}
+% \end{algorithm}
+% \end{frame}
+
+\begin{frame}
+\frametitle{Rembrandt Algorithm: Computation Steps}
+The Rembrandt algorithm computes an optimal weight matrix \( W^* \) using a three-step procedure:
+
+\begin{enumerate}
+    \item \textbf{Projection}: It projects the target matrix \( Y \) onto \( k \) dimensions using the top right singular vectors of \( \Pi_{X,L} Y \), where \( \Pi_{X,L} \) is the projection onto the left singular subspace of \( X \).
+    \item \textbf{Least Squares Fit}: Then it fits the projected labels to the features using a least squares fit, which is a standard approach for finding the best-fit linear model that minimizes the sum of the squares of the errors.
+    \item \textbf{Mapping Predictions}: Finally, it maps these predictions back to the original output space using the transpose of the top \( k \) right singular vectors of \( \Pi_{X,L} Y \).
+\end{enumerate}
+
+This process efficiently approximates \( W^* =  \) without having to compute it directly, thus saving on computational resources while still capturing the essential structure of the data.
+\end{frame}
+
+% \begin{frame}
+% \frametitle{Understanding Label Embeddings via SVD}
+% \begin{block}{Optimal Unconstrained Model}
+% An optimal model \( Z^* \) is found by minimizing the squared Frobenius norm of \( Y - XZ \). The term \( \Pi_{X,L}Y \) represents the predictions of this model, denoted \( \hat{Y} \).
+% \end{block}
+
+% \begin{block}{Right Singular Vectors as Embeddings}
+% The right singular vectors \( V \) of \( \Pi_{X,L}Y \) are the eigenvectors of \( \hat{Y}^T\hat{Y} \), capturing the essential patterns in the model's predictions.
+% \end{block}
+
+% \begin{block}{Efficiency in Computation}
+% Direct computation of \( Z^* \) is costly. The randomized algorithm sidesteps this by multiplying \( \Pi_{X,L}Y \) with a matrix \( Q \), optimizing the process and achieving the same result.
+% \end{block}
+
+% \begin{block}{Mathematical Formulation}
+% The product \( \Pi_{X,L}YQ \) is computed as \( XZ^*Q \), where \( Z^*Q \) minimizes the squared Frobenius norm of \( YQ - XZ \).
+% \end{block}
+
+% \begin{block}{Footnote}
+% If \( X = U_{X}\Sigma_{X}V_{X}^T \) is the SVD of \( X \), then \( \Pi_{X,L} = U_{X}U_{X}^T \).
+% \end{block}
+% \end{frame}
+
+\begin{frame}
+\frametitle{Label Embedding and Randomized Algorithms}
+The right singular vectors of \( \Pi_{X,L}Y \) are utilized for label embedding, motivated by the predictions of the optimal unconstrained model:
+
+\[ Z^* = \arg\min_{Z \in \mathbb{R}^{d \times c}} \|Y - XZ\|_F^2, \]
+\[ \Pi_{X,L}Y = XZ^* \equiv \hat{Y}. \]
+
+These vectors, \( V \), of \( \Pi_{X,L}Y \) are the eigenvectors of \( \hat{Y}^T\hat{Y} \), the matrix of outer products of the model's predictions. Avoiding the direct computation of \( Z^* \), the algorithm finds \( \Pi_{X,L}YQ = XZ^*Q \) by solving:
+
+\[ Z^*Q = \arg\min_{Z \in \mathbb{R}^{d \times k}} \|YQ - XZ\|_F^2. \]
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Bias-Variance Tradeoff and Model Generalization}
+\begin{block}{Squared Loss Minimization}
+Squared loss, as a proper scoring rule, is minimized at the conditional mean. With sufficient data and model flexibility, \( \frac{1}{n} \hat{Y}^T\hat{Y} \) converges to \( \mathbb{E}[\mathbb{E}[y|x]^T \mathbb{E}[y|x]] \).
+\end{block}
+\begin{block}{Law of Large Numbers}
+This convergence is assured by the strong law of large numbers.
+\end{block}
+\begin{equation}
+    \frac{1}{n} \hat{Y}^T\hat{Y} \xrightarrow{a.s.} \mathbb{E}[\mathbb{E}[y|x]^T \mathbb{E}[y|x]]
+\end{equation}
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Eigendecomposition and Embedding Insights}
+\begin{block}{Eigendecomposition}
+An embedding based on the eigendecomposition of \( \mathbb{E}[\mathbb{E}[y|x]^T \mathbb{E}[y|x]] \) is not actionable but insightful, approximating it by the empirical label covariance \( Y^TY \).
+\end{block}
+\begin{block}{Generalization in High-Dimensional Spaces}
+For multiclass or multilabel cases, the low-rank constraint might not ensure good generalization if the model is overly flexible. The eigendecomposition may only capture the most frequent labels, missing out on label co-occurrence patterns.
+\end{block}
+\begin{block}{Model Tuning}
+To better approximate \( \mathbb{E}[Y|X] \) over the observed \( Y \), one must trade off variance for bias, tuning the bias-variance tradeoff by the choice of model features, as used in Algorithm 2.
+\end{block}
+\end{frame}
+
+
+% \begin{frame}
+% \frametitle{Results: LSHTC and ODP Datasets}
+% \begin{itemize}
+%     \item \textbf{LSHTC Dataset:} 
+%     \begin{itemize}
+%         \item Rembrandt with Independent Logistic Regression (RE + ILR) achieved a precision-at-1 of $53.39\%$ for \( k = 800 \).
+%         \item This method outperforms FastXML and LPSR-NB, showing the efficiency of label embeddings$&\text{\#}8203;``[oaicite:1]``&\text{\#}8203;$.
+%     \end{itemize}
+%     \item \textbf{ODP Dataset:} 
+%     \begin{itemize}
+%         \item Rembrandt and logistic regression (RE + LR) resulted in the lowest test error of 83.15% for \( k = 300 \).
+%         \item This result is to the best of the authors' knowledge, the best published result on this dataset $& \text{\#}8203;``[oaicite:0]``&\text{\#}8203;$.
+%     \end{itemize}
+% \end{itemize}
+% \end{frame}
+
+% \begin{frame}
+% \frametitle{Results: ALOI Dataset}
+% \begin{itemize}
+%     \item \textbf{ALOI Dataset:}
+%     \begin{itemize}
+%         \item Performance of Rembrandt + Logistic Regression (RE + LR) and PCA + Logistic Regression (PCA + LR) showed a test error of $9.7\%$.
+%         \item The study shows that conventional methods like one-against-all (OAA) and logistic regression (LR) are infeasible on single machines for larger datasets.
+%     \end{itemize}
+% \end{itemize}
+% \end{frame}
+
+
+\begin{frame}
+\frametitle{Conclusion}
+\begin{itemize}
+    \item The proposed label embedding techniques significantly improve computational and statistical efficiency in large output space problems.
+    \item Experiments on large-scale datasets demonstrate that the Rembrandt algorithm coupled with logistic regression outperforms other methods.
+    \item The results highlight the potential of label embeddings in dealing with multiclass and multilabel problems, achieving state-of-the-art performance.
+\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+\begin{align*}
+    \text{THANK YOU !}
+\end{align*}
+\end{frame}
+\end{document}
